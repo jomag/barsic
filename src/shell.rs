@@ -9,7 +9,7 @@ pub struct Terminal {}
 impl Terminal {
     fn print(&self, text: &str) {
         print!("{}", text);
-        std::io::stdout().flush();
+        std::io::stdout().flush().unwrap();
     }
 
     fn readline(&self) -> String {
@@ -30,7 +30,7 @@ pub fn shell(term: &Terminal) {
                 None => println!("Parsed line"),
             },
             Err(e) => {
-                println!("Invalid input: {}", e);
+                println!("Invalid input: {:?}", e);
             }
         }
     }

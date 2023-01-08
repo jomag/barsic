@@ -31,7 +31,7 @@ impl fmt::Display for LexError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Token {
     Float(f64),
     Int(i64),
@@ -63,6 +63,78 @@ pub enum Token {
     Hash,
     ApproxEq,
     Eq,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Operator {
+    Mul,
+    Div,
+    Plus,
+    Minus,
+
+    Eq,
+    GE,
+    GT,
+    LE,
+    LT,
+    NE,
+    Not,
+    And,
+    Or,
+    Xor,
+
+    LPar,
+    RPar,
+    Separator,
+
+    UMinus,
+    UPlus,
+    Call,
+    Exp,
+    StringEq,
+    Concat,
+    EQV,
+}
+
+impl Operator {
+    pub fn is_unary(&self) -> bool {
+        match self {
+            Operator::UMinus | Operator::Not => true,
+            _ => false,
+        }
+    }
+}
+
+impl Token {
+    pub fn is_operand(&self) -> bool {
+        match self {
+            Token::Int(_) | Token::Float(_) | Token::String(_) | Token::Identifier(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn as_operator(&self) -> Option<Operator> {
+        match self {
+            Token::Mul => Some(Operator::Mul),
+            Token::Div => Some(Operator::Div),
+            Token::Plus => Some(Operator::Plus),
+            Token::Minus => Some(Operator::Minus),
+            Token::Eq => Some(Operator::Eq),
+            Token::GE => Some(Operator::GE),
+            Token::GT => Some(Operator::GT),
+            Token::LE => Some(Operator::LE),
+            Token::LT => Some(Operator::LT),
+            Token::NE => Some(Operator::NE),
+            Token::Not => Some(Operator::Not),
+            Token::And => Some(Operator::And),
+            Token::Or => Some(Operator::Or),
+            Token::Xor => Some(Operator::Xor),
+            Token::LPar => Some(Operator::LPar),
+            Token::RPar => Some(Operator::RPar),
+            Token::Comma => Some(Operator::Separator),
+            _ => None,
+        }
+    }
 }
 
 pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {

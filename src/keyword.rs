@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DataType {
     BYTE,
     WORD,
@@ -32,7 +32,7 @@ impl FromStr for DataType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Keyword {
     DIM,
     GOTO,
