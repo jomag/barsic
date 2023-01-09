@@ -4,6 +4,7 @@ use crate::{
     keyword::Keyword,
     lex::{tokenize, LexError, Operator, Token},
     statements::run_statement::{Context, Program},
+    support::Support,
 };
 
 #[derive(Debug)]
@@ -18,18 +19,38 @@ pub enum ParserError {
     Syntax(SyntaxError),
 }
 
-pub trait Statement {
-    fn exec(&self, prg: &Program, ctx: &mut Context) -> Option<usize>;
+// Expression evaluation error
+#[derive(Debug)]
+pub enum EvaluationError {}
+
+#[derive(Debug)]
+pub enum RuntimeError {
+    Evaluation(EvaluationError),
+    EndOfProgram,
 }
 
-#[derive(Clone)]
+pub trait Statement: core::fmt::Debug {
+    fn exec(
+        &self,
+        prg: &Program,
+        ctx: &mut Context,
+        sup: &mut dyn Support,
+    ) -> Result<usize, RuntimeError>;
+}
+
+#[derive(Clone, Debug)]
 pub enum FlowStatement {
     EndOfLine,
 }
 
 impl Statement for FlowStatement {
-    fn exec(&self, _prg: &Program, ctx: &mut Context) -> Option<usize> {
-        Some(ctx.pc + 1)
+    fn exec(
+        &self,
+        prg: &Program,
+        ctx: &mut Context,
+        sup: &mut dyn Support,
+    ) -> Result<usize, RuntimeError> {
+        Ok(ctx.pc + 1)
     }
 }
 
@@ -49,6 +70,33 @@ pub enum Expr {
     Xor(Box<Expr>, Box<Expr>),
     Not(Box<Expr>),
     UnaryMinusExpr(Box<Expr>),
+}
+
+pub enum Value {
+    Int(i64),
+    Float(f64),
+    String(String),
+}
+
+impl Expr {
+    pub fn evaluate(&self, ctx: &Context) -> Result<Value, EvaluationError> {
+        match self {
+            Expr::Int(_) => todo!(),
+            Expr::Float(_) => todo!(),
+            Expr::String(v) => Ok(Value::String(v.clone())),
+            Expr::Ident(_) => todo!(),
+            Expr::Relational(_, _, _) => todo!(),
+            Expr::Add(_, _) => todo!(),
+            Expr::Sub(_, _) => todo!(),
+            Expr::Mul(_, _) => todo!(),
+            Expr::Div(_, _) => todo!(),
+            Expr::And(_, _) => todo!(),
+            Expr::Or(_, _) => todo!(),
+            Expr::Xor(_, _) => todo!(),
+            Expr::Not(_) => todo!(),
+            Expr::UnaryMinusExpr(_) => todo!(),
+        }
+    }
 }
 
 fn left_assoc(op: Operator) -> bool {
@@ -88,7 +136,7 @@ fn prec(op: Operator) -> i32 {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum PrintItem {
     // Item is printed immediately after the previous item
     Consecutive(Expr),
@@ -97,6 +145,34 @@ enum PrintItem {
     Zoned(Expr),
 }
 
+// A few details about how values are formatted:
+//
+// Grouping:
+//
+// Values separated by comma (PRINT 1, 2, 3) should be grouped into
+// columns of 14 characters:
+//
+// PRINT "ABC", "DEF", "GHI"  =>  'ABC           DEF           GHI'
+//
+// If one value spans more than 14 characters, the following values are
+// moved further so that they start on a column evenly divisible by 14.
+//
+// Values separated by semicolon are not separated by any whitespace:
+//
+// PRINT "ABC", "DEF", "GHI" => "ABCDEFGHI"
+//
+// Linebreaks:
+//
+// A linebreak is always inserted at the end of the print statement unless
+// the statement ends with a semicolon or comma.
+//
+// Numbers:
+//
+// Numbers are either preceded with a minus sign or space character, depending
+// on if it's a negative or positive value. They are superseded by a space character.
+//
+// PRINT 1; -1; 123;"Done"  =>  ' 1 -1  123 Done'
+#[derive(Debug)]
 pub struct PrintStatement {
     channel: Option<Expr>,
     values: Vec<PrintItem>,
@@ -112,19 +188,64 @@ impl Clone for PrintStatement {
 }
 
 impl Statement for PrintStatement {
-    fn exec(&self, _prg: &Program, ctx: &mut Context) -> Option<usize> {
-        // FIXME: handle channels
+    fn exec(
+        &self,
+        _prg: &Program,
+        ctx: &mut Context,
+        sup: &mut dyn Support,
+    ) -> Result<usize, RuntimeError> {
+        let format = |v: Value| -> String {
+            match v {
+                Value::Int(i) => {
+                    if i < 0 {
+                        format!("{} ", i)
+                    } else {
+                        format!(" {} ", i)
+                    }
+                }
+                Value::Float(f) => {
+                    if f < 0.0 {
+                        format!("{} ", f)
+                    } else {
+                        format!(" {} ", f)
+                    }
+                }
+                Value::String(s) => s.clone(),
+            }
+        };
+
         let mut output: String = "".into();
+
+        // FIXME: handle channels properly
+        let channel: usize = 123;
 
         let mut iter = self.values.iter();
         while let Some(pi) = iter.next() {
-            let result = await outp[0].evaluate();
+            match pi {
+                PrintItem::Consecutive(expr) | PrintItem::Zoned(expr) => {
+                    let result = match expr.evaluate(ctx) {
+                        Ok(v) => v,
+                        Err(e) => return Err(RuntimeError::Evaluation(e)),
+                    };
+                    match pi {
+                        PrintItem::Consecutive(_) => {
+                            output = format!("{}{}", output, format(result))
+                        }
+                        PrintItem::Zoned(_) => output = format!("{}\t{}", output, format(result)),
+                    }
+                }
+            }
         }
 
-        Some(ctx.pc + 1)
+        // FIXME: grouped/zoned functionality is not correctly implemented (only uses \t). See Bajsic equivalent.
+        // FIXME: skipping linebreak is not implemented. Add another PrintItem ("LineBreak") and handle
+        // it in the parser.
+        sup.print(channel, &output);
+        Ok(ctx.pc + 1)
     }
 }
 
+#[derive(Debug)]
 pub struct Line {
     // The original source of this line
     pub source: String,
@@ -156,7 +277,7 @@ pub fn parse_statements(tokens: &Vec<Token>) -> Result<Vec<Rc<dyn Statement>>, S
         }
     }
 
-    Ok(vec![])
+    Ok(statements)
 }
 
 macro_rules! must_pop_keyword {

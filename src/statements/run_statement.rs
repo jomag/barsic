@@ -3,7 +3,10 @@ use std::{
     rc::Rc,
 };
 
-use crate::parser::{FlowStatement, Line, PrintStatement, Statement};
+use crate::{
+    parser::{FlowStatement, Line, PrintStatement, RuntimeError, Statement},
+    support::Support,
+};
 
 #[derive(Debug)]
 pub enum ProgramError {
@@ -82,7 +85,7 @@ impl Program {
         f
     }
 
-    fn run(&self, ctx: &mut Context) {
+    fn run(&self, ctx: &mut Context, sup: &mut dyn Support) -> RuntimeError {
         println!("RUNNING PROGRAM:");
         println!("----------------");
 
@@ -99,22 +102,29 @@ impl Program {
 
         while ctx.pc < flattened.statements.len() {
             let stmt = &flattened.statements[ctx.pc];
-            let next_pc = match stmt.exec(self, ctx) {
-                Some(next_pc) => next_pc,
-                None => break,
+            let next_pc = match stmt.exec(self, ctx, sup) {
+                Ok(next_pc) => next_pc,
+                Err(e) => return e,
             };
             ctx.pc = next_pc;
         }
+
+        RuntimeError::EndOfProgram
     }
 }
 
+#[derive(Debug)]
 pub struct RunStatement {}
 
 impl Statement for RunStatement {
-    fn exec(&self, prg: &Program, ctx: &mut Context) -> Option<usize> {
+    fn exec(
+        &self,
+        prg: &Program,
+        ctx: &mut Context,
+        sup: &mut dyn Support,
+    ) -> Result<usize, RuntimeError> {
         ctx.prepare();
-        prg.run(ctx);
-        None
+        Err(prg.run(ctx, sup))
     }
 }
 

@@ -2,8 +2,9 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader};
 
 use barsic::lex::LexError;
-use barsic::parser::{parse_line, ParserError, Statement, SyntaxError};
+use barsic::parser::{parse_line, ParserError, RuntimeError, Statement, SyntaxError};
 use barsic::statements::run_statement::{Context, Program, ProgramError, RunStatement};
+use barsic::support::Support;
 
 // use barsic::shell::Terminal;
 
@@ -12,6 +13,7 @@ enum TestError {
     Lex(LexError),
     Syntax(SyntaxError),
     Program(ProgramError),
+    Runtime(RuntimeError),
 }
 
 #[derive(Debug)]
@@ -19,6 +21,31 @@ struct TestCase {
     name: String,
     source: Vec<String>,
     expected_output: Vec<String>,
+}
+
+struct IntegrationSupport {
+    output: Vec<String>,
+    error_output: Vec<String>,
+}
+
+impl IntegrationSupport {
+    fn new() -> Self {
+        Self {
+            output: vec![],
+            error_output: vec![],
+        }
+    }
+}
+
+impl Support for IntegrationSupport {
+    fn print(&mut self, channel: usize, message: &str) {
+        assert!(channel == 123);
+        self.output.push(message.into());
+    }
+
+    fn print_error(&mut self, message: &str) {
+        self.error_output.push(message.into());
+    }
 }
 
 impl TestCase {
@@ -83,7 +110,19 @@ impl TestCase {
         // Run the program
         let run = RunStatement {};
         let mut ctx = Context::new();
-        run.exec(&prg, &mut ctx);
+        let mut sup = IntegrationSupport::new();
+
+        match run.exec(&prg, &mut ctx, &mut sup) {
+            Ok(_) => {}
+            Err(RuntimeError::EndOfProgram) => {}
+            Err(e) => return Err(TestError::Runtime(e)),
+        };
+
+        // Compare output with expectations
+        assert_eq!(sup.output.len(), self.expected_output.len());
+        for (output, expected) in sup.output.iter().zip(self.expected_output.iter()) {
+            assert_eq!(output, expected);
+        }
 
         println!("....... after exec .....");
 
